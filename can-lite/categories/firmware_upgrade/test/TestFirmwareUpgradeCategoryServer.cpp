@@ -44,14 +44,9 @@ namespace
             return 1;
         }
 
-        uint16_t PeerNodeId() const override
+        CanRequestContext CurrentRequest() const override
         {
-            return 1;
-        }
-
-        uint8_t Correlation() const override
-        {
-            return 0;
+            return currentRequest;
         }
 
         bool Send(CanPriority, uint8_t messageType, const hal::Can::Message& payload) override
@@ -74,16 +69,24 @@ namespace
 
         void SendAck(uint8_t messageType, CanAckStatus status) override
         {
+            SendAckFor(currentRequest, messageType, status);
+        }
+
+        void SendAckFor(const CanRequestContext& request, uint8_t messageType, CanAckStatus status) override
+        {
             lastCommandType = messageType;
             lastStatus = status;
+            lastAckCorrelation = request.correlation;
             ackCount++;
         }
 
+        CanRequestContext currentRequest{ 1, 0 };
         uint8_t lastSentMessageType{ 0 };
         hal::Can::Message lastSentData;
         std::size_t sendCount{ 0 };
         uint8_t lastCommandType{ 0 };
         CanAckStatus lastStatus{ CanAckStatus::success };
+        uint8_t lastAckCorrelation{ 0 };
         std::size_t ackCount{ 0 };
     };
 
@@ -170,6 +173,34 @@ namespace
         server.HandleMessage(fwuDataBlockId, infra::MakeRange(block));
 
         EXPECT_EQ(outbound.lastStatus, CanAckStatus::success);
+    }
+
+    TEST_F(TestFirmwareUpgradeCategoryServerWithObserver, DeferredAck_CorrelatesToTheRequestThatCausedIt)
+    {
+        infra::Function<void(FwuError, uint16_t)> respond;
+
+        EXPECT_CALL(observer, OnBeginUpgrade(6u, _)).WillOnce(Invoke([&respond](uint32_t, const infra::Function<void(FwuError, uint16_t)>& cb)
+            {
+                respond = cb;
+            }));
+
+        outbound.currentRequest = CanRequestContext{ 1, 0x11 };
+
+        hal::Can::Message begin;
+        begin.resize(4, 0);
+        CanFrameCodec::WriteInt32(begin, 0, 6);
+        server.HandleMessage(fwuBeginUpgradeId, infra::MakeRange(begin));
+
+        EXPECT_EQ(outbound.ackCount, 0u);
+
+        // The host is serving a later request by the time the application
+        // answers the one it was given.
+        outbound.currentRequest = CanRequestContext{ 1, 0x22 };
+        respond(FwuError::ok, 4096);
+
+        EXPECT_EQ(outbound.ackCount, 1u);
+        EXPECT_EQ(outbound.lastCommandType, fwuBeginUpgradeId);
+        EXPECT_EQ(outbound.lastAckCorrelation, 0x11);
     }
 
     TEST_F(TestFirmwareUpgradeCategoryServer, DataBlock_TooShortRejected)

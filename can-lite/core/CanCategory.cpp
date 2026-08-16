@@ -40,8 +40,18 @@ namespace services
         return *outbound;
     }
 
+    CanRequestContext CanCategory::CurrentRequest() const
+    {
+        return outbound->CurrentRequest();
+    }
+
     void CanCategoryServer::SendCommandAck(uint8_t messageType, CanAckStatus status)
     {
         Outbound().SendAck(messageType, status);
+    }
+
+    void CanCategoryServer::SendCommandAck(const CanRequestContext& request, uint8_t messageType, CanAckStatus status)
+    {
+        Outbound().SendAckFor(request, messageType, status);
     }
 }

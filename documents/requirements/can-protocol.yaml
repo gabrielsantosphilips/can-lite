@@ -124,6 +124,15 @@
     expected-sequence byte shall be meaningful only when the status is
     sequence error.
 
+- id: REQ-CAN-011.1
+  title: Deferred acknowledgement correlation
+  shall: >
+    A category that acknowledges a command after its handler has returned
+    shall acknowledge the command it was serving when that handler ran.
+    The correlation of a deferred acknowledgement shall not be taken from
+    whichever command the server happens to be serving at the moment the
+    acknowledgement is transmitted.
+
 - id: REQ-CAN-012
   title: Status request
   shall: >

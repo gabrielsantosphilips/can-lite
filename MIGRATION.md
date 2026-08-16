@@ -73,6 +73,18 @@ upgrader's private scheme. Decode acknowledgements with `CanCommandAck` /
 **What to do:** update any code that parsed a 3-byte acknowledgement or that
 derived correlation from the message type.
 
+A category that acknowledges from an asynchronous callback must capture the
+request while its handler runs and acknowledge that request explicitly:
+
+```cpp
+auto request = CurrentRequest();                  // inside the handler
+...
+SendCommandAck(request, myCommandId, CanAckStatus::success);   // in the callback
+```
+
+`SendCommandAck(messageType, status)` still exists and acknowledges the request
+being served right now, which is correct only from within the handler itself.
+
 ### 4. `CanAckStatus::categoryError` is removed
 
 Value `7` is withdrawn and left unassigned; values `0`–`6` keep their current

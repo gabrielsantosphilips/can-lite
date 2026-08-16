@@ -66,6 +66,10 @@ namespace services
 
         CanCategoryOutbound& Outbound() const;
 
+        // The request being served while a handler runs, to be captured by a
+        // category that acknowledges asynchronously.
+        CanRequestContext CurrentRequest() const;
+
     private:
         infra::BoundedVector<CanMessageTypeBinding>& messageTypes;
         CanCategoryOutbound* outbound = &CanCategoryOutboundNull::Instance();
@@ -76,7 +80,14 @@ namespace services
         , public infra::IntrusiveList<CanCategoryServer>::NodeType
     {
     public:
+        // Acknowledges the request being served right now. Valid only while the
+        // handler runs.
         void SendCommandAck(uint8_t messageType, CanAckStatus status);
+        // Acknowledges a request captured with CurrentRequest(). A category that
+        // answers from an asynchronous callback must use this, or its
+        // acknowledgement correlates to whichever request the host is serving by
+        // the time the callback fires.
+        void SendCommandAck(const CanRequestContext& request, uint8_t messageType, CanAckStatus status);
 
     protected:
         using CanCategory::CanCategory;

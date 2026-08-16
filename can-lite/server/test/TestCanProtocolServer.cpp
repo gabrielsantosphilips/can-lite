@@ -61,6 +61,24 @@ namespace
                 });
         }
 
+        // Models a category that answers asynchronously: the handler only
+        // records which request it was given, and the acknowledgement follows
+        // later.
+        void DeferMessageType(uint8_t messageType)
+        {
+            AddMessageType(messageType, [this](infra::ConstByteRange)
+                {
+                    handleCount++;
+                    deferredRequests.push_back(CurrentRequest());
+                    return true;
+                });
+        }
+
+        void CompleteDeferred(std::size_t index, uint8_t messageType)
+        {
+            SendCommandAck(deferredRequests[index], messageType, CanAckStatus::success);
+        }
+
         bool SendResponse(uint8_t messageType)
         {
             hal::Can::Message payload;
@@ -71,6 +89,7 @@ namespace
         int handleCount = 0;
         int rejectCount = 0;
         std::size_t lastPayloadSize = 0;
+        infra::BoundedVector<CanRequestContext>::WithMaxSize<4> deferredRequests;
 
     private:
         uint8_t id;
@@ -424,6 +443,38 @@ namespace
         EXPECT_EQ(ack[0], 0x02);
         EXPECT_EQ(ack[1], 0x33);
         EXPECT_EQ(ack[2], static_cast<uint8_t>(CanAckStatus::unknownCommand));
+        EXPECT_EQ(ack[3], 0);
+        EXPECT_EQ(ack[4], 0);
+
+        server.UnregisterCategory(testCategory);
+    }
+
+    TEST_F(CanProtocolServerTest, DeferredAck_CorrelatesToTheRequestThatCausedIt)
+    {
+        TestCategoryServer testCategory(0x02, true);
+        testCategory.DeferMessageType(0x21);
+        server.RegisterCategory(testCategory);
+
+        SimulateRx(MakeCommandId(0x02, 0x21), MakeMessage({ 0, 0xA0 }));
+        SimulateRx(MakeCommandId(0x02, 0x21), MakeMessage({ 1, 0xA1 }));
+
+        ASSERT_EQ(testCategory.deferredRequests.size(), 2u);
+
+        hal::Can::Message ack;
+        EXPECT_CALL(canMock, SendData(_, _, _)).WillOnce([&ack](hal::Can::Id, const hal::Can::Message& data, const auto& cb)
+            {
+                ack = data;
+                cb(true);
+            });
+
+        // The first request is answered only after the second one was
+        // dispatched, so the acknowledgement must carry the first correlation.
+        testCategory.CompleteDeferred(0, 0x21);
+
+        ASSERT_EQ(ack.size(), canCommandAckSize);
+        EXPECT_EQ(ack[0], 0x02);
+        EXPECT_EQ(ack[1], 0x21);
+        EXPECT_EQ(ack[2], static_cast<uint8_t>(CanAckStatus::success));
         EXPECT_EQ(ack[3], 0);
         EXPECT_EQ(ack[4], 0);
 

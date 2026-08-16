@@ -225,7 +225,9 @@ The expected-sequence byte is only meaningful when the status is
 `sequenceError`, and is 0 otherwise.
 
 Correlation is a protocol concern. Categories MUST NOT invent their own
-correlation scheme on top of the message type.
+correlation scheme on top of the message type. A category that acknowledges
+after its handler returned MUST acknowledge the request it was serving when the
+handler ran, not the one the server is serving when the acknowledgement is sent.
 
 #### 8.1.3 Status Request (Type 0x03)
 

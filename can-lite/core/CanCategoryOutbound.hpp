@@ -8,6 +8,14 @@
 
 namespace services
 {
+    // Identifies one request a category is serving: the address it was sent to
+    // and the sequence number an acknowledgement echoes back as its correlation.
+    struct CanRequestContext
+    {
+        uint16_t peerNodeId{};
+        uint8_t correlation{};
+    };
+
     // The outbound half of a registered category. The protocol host creates one
     // handle per category at registration and binds it to that category's ID, so
     // a category never composes a CAN identifier itself. The handle owns the
@@ -19,10 +27,11 @@ namespace services
         virtual uint8_t Category() const = 0;
         virtual uint16_t NodeId() const = 0;
 
-        // The peer and sequence number of the request currently being served,
-        // so an acknowledgement can correlate itself to the request.
-        virtual uint16_t PeerNodeId() const = 0;
-        virtual uint8_t Correlation() const = 0;
+        // The request currently being served. A category that acknowledges from
+        // an asynchronous callback must capture this while its handler runs and
+        // acknowledge with SendAckFor: by the time the callback fires, the host
+        // may already be serving a later request.
+        virtual CanRequestContext CurrentRequest() const = 0;
 
         // Sends from this node's own address, which is how a server addresses
         // its responses.
@@ -37,7 +46,12 @@ namespace services
         virtual bool SendSequencedTo(uint16_t targetNodeId, CanPriority priority, uint8_t messageType,
             const hal::Can::Message& payload) = 0;
 
+        // Acknowledges the request being served right now, for a category that
+        // answers from within its handler.
         virtual void SendAck(uint8_t messageType, CanAckStatus status) = 0;
+        // Acknowledges a request captured earlier, for a category that answers
+        // from an asynchronous callback.
+        virtual void SendAckFor(const CanRequestContext& request, uint8_t messageType, CanAckStatus status) = 0;
 
     protected:
         CanCategoryOutbound() = default;
@@ -57,8 +71,7 @@ namespace services
 
         uint8_t Category() const override;
         uint16_t NodeId() const override;
-        uint16_t PeerNodeId() const override;
-        uint8_t Correlation() const override;
+        CanRequestContext CurrentRequest() const override;
 
         bool Send(CanPriority priority, uint8_t messageType, const hal::Can::Message& payload) override;
         bool SendTo(uint16_t targetNodeId, CanPriority priority, uint8_t messageType,
@@ -67,6 +80,7 @@ namespace services
             const hal::Can::Message& payload) override;
 
         void SendAck(uint8_t messageType, CanAckStatus status) override;
+        void SendAckFor(const CanRequestContext& request, uint8_t messageType, CanAckStatus status) override;
     };
 
     // The handle the protocol host hands out. Bound to a transport and a
@@ -94,8 +108,7 @@ namespace services
 
         uint8_t Category() const override;
         uint16_t NodeId() const override;
-        uint16_t PeerNodeId() const override;
-        uint8_t Correlation() const override;
+        CanRequestContext CurrentRequest() const override;
 
         bool Send(CanPriority priority, uint8_t messageType, const hal::Can::Message& payload) override;
         bool SendTo(uint16_t targetNodeId, CanPriority priority, uint8_t messageType,
@@ -104,12 +117,12 @@ namespace services
             const hal::Can::Message& payload) override;
 
         void SendAck(uint8_t messageType, CanAckStatus status) override;
+        void SendAckFor(const CanRequestContext& request, uint8_t messageType, CanAckStatus status) override;
 
     private:
         CanFrameTransport* transport = nullptr;
         uint8_t categoryId = 0;
-        uint16_t peerNodeId = 0;
-        uint8_t correlation = 0;
+        CanRequestContext currentRequest;
         CanSequenceTable sequences;
     };
 }

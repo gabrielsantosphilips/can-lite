@@ -66,8 +66,8 @@ namespace
 
         EXPECT_EQ(null.Category(), 0);
         EXPECT_EQ(null.NodeId(), 0);
-        EXPECT_EQ(null.PeerNodeId(), 0);
-        EXPECT_EQ(null.Correlation(), 0);
+        EXPECT_EQ(null.CurrentRequest().peerNodeId, 0);
+        EXPECT_EQ(null.CurrentRequest().correlation, 0);
     }
 
     TEST_F(CanCategoryOutboundTest, Null_RefusesEverySendWithoutEmittingAFrame)
@@ -83,6 +83,7 @@ namespace
     TEST_F(CanCategoryOutboundTest, Null_SendAckEmitsNothing)
     {
         CanCategoryOutboundNull::Instance().SendAck(messageTypeId, CanAckStatus::success);
+        CanCategoryOutboundNull::Instance().SendAckFor(CanRequestContext{ peerNodeId, 3 }, messageTypeId, CanAckStatus::success);
     }
 
     // === Bind / Unbind ===
@@ -107,11 +108,14 @@ namespace
     TEST_F(CanCategoryOutboundTest, Unbind_LeavesTheHandleUnbound)
     {
         outbound.Bind(transport, boundCategoryId);
+        outbound.BeginRequest(peerNodeId, 0x42);
         outbound.Unbind();
 
         EXPECT_FALSE(outbound.IsBound());
         EXPECT_FALSE(outbound.IsBoundTo(boundCategoryId));
         EXPECT_EQ(outbound.NodeId(), 0);
+        EXPECT_EQ(outbound.CurrentRequest().peerNodeId, 0);
+        EXPECT_EQ(outbound.CurrentRequest().correlation, 0);
     }
 
     // === Sending while unbound ===
@@ -129,6 +133,7 @@ namespace
     {
         outbound.SendAckWith(peerNodeId, messageTypeId, CanAckStatus::invalidPayload, 3, 4);
         outbound.SendAck(messageTypeId, CanAckStatus::invalidPayload);
+        outbound.SendAckFor(CanRequestContext{ peerNodeId, 3 }, messageTypeId, CanAckStatus::invalidPayload);
     }
 
     TEST_F(CanCategoryOutboundTest, Unbound_AfterUnbind_RefusesEverySendWithoutEmittingAFrame)
@@ -179,8 +184,8 @@ namespace
 
         outbound.SendAck(messageTypeId, CanAckStatus::invalidState);
 
-        EXPECT_EQ(outbound.PeerNodeId(), peerNodeId);
-        EXPECT_EQ(outbound.Correlation(), 0x42);
+        EXPECT_EQ(outbound.CurrentRequest().peerNodeId, peerNodeId);
+        EXPECT_EQ(outbound.CurrentRequest().correlation, 0x42);
         ASSERT_EQ(sentFrames.size(), 1u);
         ASSERT_EQ(sentFrames[0].size(), canCommandAckSize);
         EXPECT_EQ(sentFrames[0][0], boundCategoryId);
@@ -188,6 +193,42 @@ namespace
         EXPECT_EQ(sentFrames[0][2], static_cast<uint8_t>(CanAckStatus::invalidState));
         EXPECT_EQ(sentFrames[0][3], 0x42);
         EXPECT_EQ(sentFrames[0][4], 0);
+    }
+
+    TEST_F(CanCategoryOutboundTest, SendAck_FollowsTheRequestBeingServed)
+    {
+        RecordSentFrames();
+        outbound.Bind(transport, boundCategoryId);
+
+        outbound.BeginRequest(peerNodeId, 0x42);
+        outbound.BeginRequest(otherPeerNodeId, 0x07);
+        outbound.SendAck(messageTypeId, CanAckStatus::success);
+
+        ASSERT_EQ(sentFrames.size(), 1u);
+        EXPECT_EQ(sentFrames[0][3], 0x07);
+    }
+
+    TEST_F(CanCategoryOutboundTest, SendAckFor_CorrelatesToTheCapturedRequest)
+    {
+        RecordSentFrames();
+        outbound.Bind(transport, boundCategoryId);
+
+        outbound.BeginRequest(peerNodeId, 0x42);
+        auto deferred = outbound.CurrentRequest();
+
+        // The host serves the next request before the category answers the one
+        // it captured.
+        outbound.BeginRequest(otherPeerNodeId, 0x07);
+        outbound.SendAckFor(deferred, messageTypeId, CanAckStatus::success);
+
+        ASSERT_EQ(sentFrames.size(), 1u);
+        ASSERT_EQ(sentFrames[0].size(), canCommandAckSize);
+        EXPECT_EQ(sentFrames[0][0], boundCategoryId);
+        EXPECT_EQ(sentFrames[0][1], messageTypeId);
+        EXPECT_EQ(sentFrames[0][2], static_cast<uint8_t>(CanAckStatus::success));
+        EXPECT_EQ(sentFrames[0][3], 0x42);
+        EXPECT_EQ(sentFrames[0][4], 0);
+        EXPECT_EQ(ExtractCanNodeId(sentIds[0]), ownNodeId);
     }
 
     // === SendSequencedTo ===

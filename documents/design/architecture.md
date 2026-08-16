@@ -269,7 +269,7 @@ The handle owns everything a category must not do for itself:
 |---------|----------------------------|
 | CAN identifier composition | The category never sees its own ID on the wire, so it cannot compose an identifier for a category it is not. |
 | Sequence allocation | Sequence numbers are a property of a (peer, category) pair, not of a message type. |
-| Acknowledgement | The handle already knows the category ID, the peer and the correlation, so `SendCommandAck` needs no arguments beyond message type and status — and no null check. |
+| Acknowledgement | The handle already knows the category ID, the peer and the correlation of the request being served, so `SendCommandAck(messageType, status)` needs nothing more — and no null check. A category that answers asynchronously captures that request with `CurrentRequest()` while its handler runs and acknowledges with `SendCommandAck(request, messageType, status)`, because by the time its callback fires the host may already be serving a later request. |
 
 An unattached category holds `CanCategoryOutboundNull`, a null object whose sends are silent no-ops. That is what removed the `really_assert` that used to abort a node whose category had no acknowledger.
 

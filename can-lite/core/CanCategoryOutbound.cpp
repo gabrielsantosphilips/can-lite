@@ -18,14 +18,9 @@ namespace services
         return 0;
     }
 
-    uint16_t CanCategoryOutboundNull::PeerNodeId() const
+    CanRequestContext CanCategoryOutboundNull::CurrentRequest() const
     {
-        return 0;
-    }
-
-    uint8_t CanCategoryOutboundNull::Correlation() const
-    {
-        return 0;
+        return CanRequestContext{};
     }
 
     bool CanCategoryOutboundNull::Send(CanPriority, uint8_t, const hal::Can::Message&)
@@ -46,12 +41,14 @@ namespace services
     void CanCategoryOutboundNull::SendAck(uint8_t, CanAckStatus)
     {}
 
+    void CanCategoryOutboundNull::SendAckFor(const CanRequestContext&, uint8_t, CanAckStatus)
+    {}
+
     void CanCategoryOutboundImpl::Bind(CanFrameTransport& newTransport, uint8_t newCategoryId)
     {
         transport = &newTransport;
         categoryId = newCategoryId;
-        peerNodeId = 0;
-        correlation = 0;
+        currentRequest = CanRequestContext{};
         sequences.Forget();
     }
 
@@ -59,8 +56,7 @@ namespace services
     {
         transport = nullptr;
         categoryId = 0;
-        peerNodeId = 0;
-        correlation = 0;
+        currentRequest = CanRequestContext{};
         sequences.Forget();
     }
 
@@ -76,8 +72,7 @@ namespace services
 
     void CanCategoryOutboundImpl::BeginRequest(uint16_t requestPeerNodeId, uint8_t requestCorrelation)
     {
-        peerNodeId = requestPeerNodeId;
-        correlation = requestCorrelation;
+        currentRequest = CanRequestContext{ requestPeerNodeId, requestCorrelation };
     }
 
     CanSequenceTable::ValidationResult CanCategoryOutboundImpl::ValidateSequence(uint16_t peer, uint8_t sequenceNumber)
@@ -117,14 +112,9 @@ namespace services
         return transport != nullptr ? transport->NodeId() : uint16_t{ 0 };
     }
 
-    uint16_t CanCategoryOutboundImpl::PeerNodeId() const
+    CanRequestContext CanCategoryOutboundImpl::CurrentRequest() const
     {
-        return peerNodeId;
-    }
-
-    uint8_t CanCategoryOutboundImpl::Correlation() const
-    {
-        return correlation;
+        return currentRequest;
     }
 
     bool CanCategoryOutboundImpl::Send(CanPriority priority, uint8_t messageType, const hal::Can::Message& payload)
@@ -170,6 +160,11 @@ namespace services
 
     void CanCategoryOutboundImpl::SendAck(uint8_t messageType, CanAckStatus status)
     {
-        SendAckWith(NodeId(), messageType, status, correlation, 0);
+        SendAckFor(currentRequest, messageType, status);
+    }
+
+    void CanCategoryOutboundImpl::SendAckFor(const CanRequestContext& request, uint8_t messageType, CanAckStatus status)
+    {
+        SendAckWith(NodeId(), messageType, status, request.correlation, 0);
     }
 }
