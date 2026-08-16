@@ -110,15 +110,19 @@
 - id: REQ-CAN-011
   title: Command acknowledgement
   shall: >
-    The server shall transmit an acknowledgement frame for every
-    processed command. The payload shall always be exactly 5 bytes:
-    the original command's category, its message type, a status code
-    (success, unknown command, invalid payload, invalid state,
-    sequence error, rate limited or not implemented), a correlation
-    byte echoing the sequence number of the acknowledged command,
-    and the sequence number the server expects next. The field
-    meanings shall not vary with the status. The expected-sequence
-    byte shall be meaningful only when the status is sequence error.
+    The server shall transmit an acknowledgement frame for every command
+    it rejects, that is for an unrecognised message type, an invalid
+    payload and a sequence error. A command that a category handles
+    successfully shall not be acknowledged by the server itself; a
+    category may acknowledge such a command explicitly. The payload
+    shall always be exactly 5 bytes: the original command's category,
+    its message type, a status code (success, unknown command, invalid
+    payload, invalid state, sequence error, rate limited or not
+    implemented), a correlation byte echoing the sequence number of the
+    acknowledged command, and the sequence number the server expects
+    next. The field meanings shall not vary with the status. The
+    expected-sequence byte shall be meaningful only when the status is
+    sequence error.
 
 - id: REQ-CAN-012
   title: Status request

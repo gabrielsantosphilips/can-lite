@@ -92,6 +92,9 @@ remains for a message type that is recognised but not implemented.
   counter while the sender already had, so one lost frame bricked the link. The
   `sequenceError` acknowledgement now carries the expected sequence and the
   client resynchronises automatically.
+- A sequenced command must be addressed to an individual node: `SendSequencedTo`
+  refuses the broadcast address, because a broadcast acknowledgement cannot be
+  correlated back to the broadcast stream.
 - When the peer table fills, the oldest entry is reused. A busy bus no longer
   aborts the node.
 - `CanCategoryClient` no longer exposes `PeekSequence` / `CommitSequence`;

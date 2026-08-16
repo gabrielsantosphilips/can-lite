@@ -150,6 +150,13 @@ namespace services
         if (transport == nullptr)
             return false;
 
+        // A broadcast carries no correlatable resynchronisation path: every
+        // server would validate the same peer key and answer from its own
+        // address, so a sequenceError could never be attributed to the stream
+        // that drifted. Refuse before a sequence number is consumed.
+        if (targetNodeId == canBroadcastNodeId)
+            return false;
+
         if (payload.size() >= payload.max_size())
             return false;
 

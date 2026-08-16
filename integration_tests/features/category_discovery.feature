@@ -22,12 +22,12 @@ Feature: Category Discovery
 
   @REQ-CAN-014
   Scenario: Multiple custom categories are discoverable
-    Given a custom category with ID 1 is registered on the server
+    Given a custom category with ID 2 is registered on the server
     And a custom category with ID 5 is registered on the server
     When the client sends a category discovery request to node 1
     Then the category list response shall contain 3 categories
     And the category list response shall contain category 0
-    And the category list response shall contain category 1
+    And the category list response shall contain category 2
     And the category list response shall contain category 5
 
   Scenario: Category list response without pending request is ignored

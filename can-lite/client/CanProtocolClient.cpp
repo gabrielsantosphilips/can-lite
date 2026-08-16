@@ -20,6 +20,15 @@ namespace services
             });
     }
 
+    CanProtocolClient::~CanProtocolClient()
+    {
+        // A category may outlive the host it is registered on, so every
+        // registration is undone here; each category falls back to the null
+        // handle instead of pointing into destroyed storage.
+        while (!categories.empty())
+            UnregisterCategory(categories.front());
+    }
+
     CanProtocolClient::SystemObserver::SystemObserver(CanSystemCategoryClient& subject, CanProtocolClient& client)
         : CanSystemCategoryClientObserver(subject)
         , client(client)
@@ -51,25 +60,25 @@ namespace services
     void CanProtocolClient::RegisterCategory(CanCategoryClient& category)
     {
         really_assert(category.Id() <= canMaxCategoryId);
-        really_assert(categoryCount < canMaxCategories);
+        really_assert(categories.size() < canMaxCategories);
 
         for (auto& existing : categories)
             really_assert(existing.Id() != category.Id());
 
         category.AttachOutbound(AllocateOutbound(category.Id()));
         categories.push_back(category);
-        ++categoryCount;
     }
 
     void CanProtocolClient::UnregisterCategory(CanCategoryClient& category)
     {
+        really_assert(categories.has_element(category));
+
         auto outbound = FindOutbound(category.Id());
         if (outbound != nullptr)
             outbound->Unbind();
 
         category.DetachOutbound();
         categories.erase(category);
-        --categoryCount;
     }
 
     CanCategoryOutboundImpl* CanProtocolClient::FindOutbound(uint8_t categoryId)

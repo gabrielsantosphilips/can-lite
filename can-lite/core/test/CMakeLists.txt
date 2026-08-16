@@ -19,9 +19,11 @@ emil_add_test(can_lite.core_test)
 
 target_link_libraries(can_lite.core_test PRIVATE
     can_lite.core
-    gtest_main
+    can_lite.test_util
+    gmock_main
 )
 
 target_sources(can_lite.core_test PRIVATE
+    TestCanCategoryOutbound.cpp
     TestCanProtocolCore.cpp
 )

@@ -31,7 +31,9 @@ namespace services
         virtual bool SendTo(uint16_t targetNodeId, CanPriority priority, uint8_t messageType,
             const hal::Can::Message& payload) = 0;
         // As SendTo, but prepends the next sequence number allocated for this
-        // (peer, category) pair. Fails when the payload leaves no room for it.
+        // (peer, category) pair. Fails when the payload leaves no room for it,
+        // and when addressed to the broadcast address: a sequenced command must
+        // reach one node, because a broadcast cannot be resynchronised.
         virtual bool SendSequencedTo(uint16_t targetNodeId, CanPriority priority, uint8_t messageType,
             const hal::Can::Message& payload) = 0;
 

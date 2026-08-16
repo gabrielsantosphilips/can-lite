@@ -252,7 +252,7 @@ sequenceDiagram
 
     Note over C: User cancels
     C->>S: abort
-    S->>C: commandAck (0x1, 0x04, success)
+    S->>C: commandAck (category=0x1, command=0x04, success, correlation=seq, expected=0)
     Note over S: Discards data, returns to Idle
 ```
 

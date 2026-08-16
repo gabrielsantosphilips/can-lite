@@ -261,7 +261,7 @@ Neither side takes a transport or a protocol host in its constructor. Both send 
 
 ## 7.1 The Outbound Handle
 
-`CanProtocolServer` and `CanProtocolClient` own a fixed array of `CanCategoryOutboundImpl`, one slot per registerable category. At registration the host binds a slot to the transport and to that category's ID and attaches it; at unregistration it detaches and unbinds. The category holds a `CanCategoryOutbound&`.
+`CanProtocolServer` and `CanProtocolClient` own a fixed array of `CanCategoryOutboundImpl`, one slot per registerable category. At registration the host binds a slot to the transport and to that category's ID and attaches it; at unregistration it detaches and unbinds. The category holds a `CanCategoryOutbound&`. Destroying a host unregisters everything still registered on it, so a category that outlives its host keeps holding the null handle instead of a pointer into destroyed storage. Unregistering a category that is not registered is a programming error and is caught by `really_assert`, the same way registration catches a duplicate ID.
 
 The handle owns everything a category must not do for itself:
 
@@ -308,6 +308,8 @@ Categories that answer `true` to `RequiresSequenceValidation()` validate an 8-bi
 Sequence state lives in a `CanSequenceTable` owned by each outbound handle, so it is scoped to **one category** and, within that, tracked **per peer** in a fixed array of 8 slots. Client and server use the same table type, so both ends agree on what "the next sequence number" means.
 
 The peer key is the Node ID field of the frame, which the unchanged 29-bit layout defines as the *destination* of a command. A client therefore keys on the server it addresses, and a server keys on the address it was addressed by — its own address or the broadcast address — which separates the unicast stream from the broadcast one but cannot separate two clients from each other. Telling senders apart would need a source address on the wire, and the wire format is fixed.
+
+A sequenced command must be addressed to an individual node, because a broadcast has no correlatable resynchronisation path; broadcast frames must use categories that do not require sequence validation. `CanCategoryOutboundImpl::SendSequencedTo` refuses the broadcast address before it allocates a sequence number, so a rejected send leaves the stream untouched.
 
 Two bugs motivated this:
 
@@ -431,7 +433,7 @@ protocolServer.AttachIsoTpTransport(isoTp);
 
 ## 12. Integration Testing
 
-Integration tests validate end-to-end behavior across components using [cucumber-cpp-runner](https://github.com/philips-software/amp-cucumber-cpp-runner) v4.0.0 (BDD / Gherkin). Feature files are in `integration_tests/features/`; step definitions in `integration_tests/steps/`.
+Integration tests validate end-to-end behavior across components using [cucumber-cpp-runner](https://github.com/philips-software/amp-cucumber-cpp-runner) v4.1.0 (BDD / Gherkin). Feature files are in `integration_tests/features/`; step definitions in `integration_tests/steps/`.
 
 ### Single Common Fixture
 

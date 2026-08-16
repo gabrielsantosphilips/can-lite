@@ -39,6 +39,7 @@ namespace services
 
         explicit CanProtocolClient(hal::Can& can);
         CanProtocolClient(hal::Can& can, const Config& config);
+        ~CanProtocolClient();
 
         CanProtocolClient(const CanProtocolClient&) = delete;
         CanProtocolClient& operator=(const CanProtocolClient&) = delete;
@@ -90,7 +91,6 @@ namespace services
         CanSystemCategoryClient systemCategory;
         SystemObserver systemObserver;
         infra::IntrusiveList<CanCategoryClient> categories;
-        uint8_t categoryCount = 0;
         std::array<CanCategoryOutboundImpl, canMaxCategories> outbounds;
         infra::Function<void(infra::ConstByteRange categoryIds)> pendingDiscoveryCallback;
         std::array<ServerLiveness, maxServers> serverLiveness;

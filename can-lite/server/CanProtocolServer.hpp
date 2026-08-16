@@ -39,6 +39,7 @@ namespace services
         };
 
         CanProtocolServer(hal::Can& can, const Config& config);
+        ~CanProtocolServer();
 
         void RegisterCategory(CanCategoryServer& category);
         void UnregisterCategory(CanCategoryServer& category);
@@ -82,7 +83,6 @@ namespace services
         CanSystemCategoryServer systemCategory;
         SystemObserver systemObserver;
         infra::IntrusiveList<CanCategoryServer> categories;
-        uint8_t categoryCount = 0;
         std::array<CanCategoryOutboundImpl, canMaxCategories> outbounds;
         IsoTpTransport* isoTpTransport = nullptr;
     };

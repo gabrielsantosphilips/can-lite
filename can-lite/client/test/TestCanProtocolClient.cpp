@@ -4,6 +4,7 @@
 #include "infra/timer/test_helper/ClockFixture.hpp"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <optional>
 
 namespace
 {
@@ -156,6 +157,81 @@ namespace
 
         SimulateRx(id, MakeMessage({ 0xBB }));
         EXPECT_EQ(testCategory.handleCount, 1);
+    }
+
+    TEST_F(CanProtocolClientTest, UnregisterCategory_NotRegisteredAsserts)
+    {
+        TestCategoryClient neverRegistered(0x05);
+        EXPECT_DEATH(client.UnregisterCategory(neverRegistered), "");
+    }
+
+    TEST_F(CanProtocolClientTest, UnregisterCategory_TwiceAsserts)
+    {
+        TestCategoryClient testCategory(0x05);
+        client.RegisterCategory(testCategory);
+        client.UnregisterCategory(testCategory);
+
+        EXPECT_DEATH(client.UnregisterCategory(testCategory), "");
+    }
+
+    TEST_F(CanProtocolClientTest, RegisterUnregisterCycle_KeepsCategoryUsable)
+    {
+        TestCategoryClient testCategory(0x05);
+        testCategory.AcceptMessageType(0x42);
+
+        EXPECT_CALL(canMock, SendData(_, _, _)).Times(3);
+
+        auto id = hal::Can::Id::Create29BitId(MakeCanId(CanPriority::telemetry, 0x05, 0x42, 0));
+
+        for (int cycle = 0; cycle != 3; ++cycle)
+        {
+            client.RegisterCategory(testCategory);
+            SimulateRx(id, MakeMessage({ 0xAA }));
+            EXPECT_TRUE(testCategory.SendSequenced(1, 0x10));
+            client.UnregisterCategory(testCategory);
+            EXPECT_FALSE(testCategory.SendSequenced(1, 0x10));
+        }
+
+        EXPECT_EQ(testCategory.handleCount, 3);
+    }
+
+    TEST_F(CanProtocolClientTest, RegisterUnregisterCycle_KeepsCapacityAvailable)
+    {
+        infra::BoundedVector<TestCategoryClient>::WithMaxSize<canMaxCategories> categories;
+
+        for (uint8_t id = 1; id != canMaxCategories; ++id)
+            categories.emplace_back(id);
+
+        for (int cycle = 0; cycle != 3; ++cycle)
+        {
+            for (auto& category : categories)
+                client.RegisterCategory(category);
+
+            for (auto& category : categories)
+                client.UnregisterCategory(category);
+        }
+
+        EXPECT_CALL(canMock, SendData(_, _, _));
+
+        client.RegisterCategory(categories.front());
+        EXPECT_TRUE(categories.front().SendSequenced(1, 0x10));
+        client.UnregisterCategory(categories.front());
+    }
+
+    TEST_F(CanProtocolClientTest, CategoryOutlivingClient_SendsNothing)
+    {
+        StrictMock<hal::CanMock> ownCan;
+        EXPECT_CALL(ownCan, ReceiveData(_));
+
+        TestCategoryClient outlivingCategory(0x05);
+
+        {
+            std::optional<CanProtocolClient> ownClient;
+            ownClient.emplace(ownCan);
+            ownClient->RegisterCategory(outlivingCategory);
+        }
+
+        EXPECT_FALSE(outlivingCategory.SendSequenced(1, 0x10));
     }
 
     // === DiscoverCategories ===
@@ -369,11 +445,32 @@ namespace
         EXPECT_THAT(sentSequences, ElementsAre(1));
     }
 
+    TEST_F(CanProtocolClientSequenceTest, SequenceErrorAck_ResyncedStreamContinuesFromExpectedSequence)
+    {
+        categoryA.SendSequenced(3, 0x10);
+        categoryA.SendSequenced(3, 0x10);
+        sentSequences.clear();
+
+        SimulateRx(MakeSystemId(canCommandAckMessageTypeId, 3),
+            MakeAck(0x05, 0x10, CanAckStatus::sequenceError, 1, 42));
+
+        categoryA.SendSequenced(3, 0x10);
+        categoryA.SendSequenced(3, 0x10);
+
+        EXPECT_THAT(sentSequences, ElementsAre(42, 43));
+    }
+
     TEST_F(CanProtocolClientSequenceTest, SendSequenced_RejectsPayloadWithoutRoomForSequence)
     {
         hal::Can::Message full;
         full.resize(full.max_size(), 0xFF);
         EXPECT_FALSE(categoryA.Send(1, 0x10, full));
+        EXPECT_TRUE(sentSequences.empty());
+    }
+
+    TEST_F(CanProtocolClientSequenceTest, SendSequenced_RejectsBroadcastAddress)
+    {
+        EXPECT_FALSE(categoryA.SendSequenced(canBroadcastNodeId, 0x10));
         EXPECT_TRUE(sentSequences.empty());
     }
 

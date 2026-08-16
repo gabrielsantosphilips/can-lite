@@ -324,6 +324,12 @@ sequenceDiagram
   addressed by — its own address or the broadcast address. A command frame
   carries no source address, so sequenced commands sent to one server by
   several clients share a single stream and resynchronise against each other.
+- A sequenced command MUST be addressed to an individual node: a broadcast has
+  no correlatable resynchronisation path, because every server validates it
+  against the same peer key yet answers a `sequenceError` from its own address.
+  A sender therefore refuses to sequence a frame addressed to the broadcast
+  address, and frames that must be broadcast belong to categories that do not
+  require sequence validation.
 - Individual category handlers declare whether they require sequence
   validation via `RequiresSequenceValidation()`. Categories that opt out
   bypass validation entirely.
@@ -358,7 +364,10 @@ flowchart TD
     H -- No --> I[Send sequenceError Ack]
     H -- Yes --> J[Dispatch to handler]
     G -- No --> J
-    J --> K[Notify observer + Send Ack]
+    J --> K{Handler result?}
+    K -- Unknown message type --> L[Send unknownCommand Ack]
+    K -- Rejected --> M[Send invalidPayload Ack]
+    K -- Handled --> N[Notify observer, no Ack]
 ```
 
 ## 13. Node Addressing
@@ -416,7 +425,9 @@ type but rejects its payload produces `invalidPayload`, and one that is
 deliberately unfinished answers `notImplemented`.
 
 Registering a category with an ID outside 0x0-0x7, a duplicate ID, or a
-ninth category is a programming error and aborts in debug builds.
+ninth category is a programming error, as is unregistering a category
+that is not registered. These checks use `really_assert`, which aborts
+the node in every build configuration, release included.
 
 ## 16. Security Considerations
 

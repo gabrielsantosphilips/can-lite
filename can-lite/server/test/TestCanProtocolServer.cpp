@@ -4,6 +4,7 @@
 #include "infra/timer/test_helper/ClockFixture.hpp"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <optional>
 
 namespace
 {
@@ -58,6 +59,13 @@ namespace
                     rejectCount++;
                     return false;
                 });
+        }
+
+        bool SendResponse(uint8_t messageType)
+        {
+            hal::Can::Message payload;
+            payload.push_back(0x5A);
+            return Outbound().Send(CanPriority::response, messageType, payload);
         }
 
         int handleCount = 0;
@@ -502,6 +510,76 @@ namespace
     {
         TestCategoryServer duplicate(canSystemCategoryId, false);
         EXPECT_DEATH(server.RegisterCategory(duplicate), "");
+    }
+
+    TEST_F(CanProtocolServerTest, UnregisterCategory_NotRegisteredAsserts)
+    {
+        TestCategoryServer neverRegistered(0x02, false);
+        EXPECT_DEATH(server.UnregisterCategory(neverRegistered), "");
+    }
+
+    TEST_F(CanProtocolServerTest, UnregisterCategory_TwiceAsserts)
+    {
+        TestCategoryServer testCategory(0x02, false);
+        server.RegisterCategory(testCategory);
+        server.UnregisterCategory(testCategory);
+
+        EXPECT_DEATH(server.UnregisterCategory(testCategory), "");
+    }
+
+    TEST_F(CanProtocolServerTest, RegisterUnregisterCycle_KeepsCategoryUsable)
+    {
+        TestCategoryServer testCategory(0x02, false);
+        testCategory.AcceptMessageType(0x42);
+
+        for (int cycle = 0; cycle != 3; ++cycle)
+        {
+            server.RegisterCategory(testCategory);
+            SimulateRx(MakeCommandId(0x02, 0x42), MakeMessage({ 0xAA }));
+            EXPECT_TRUE(testCategory.SendResponse(0x43));
+            server.UnregisterCategory(testCategory);
+            EXPECT_FALSE(testCategory.SendResponse(0x43));
+        }
+
+        EXPECT_EQ(testCategory.handleCount, 3);
+    }
+
+    TEST_F(CanProtocolServerTest, RegisterUnregisterCycle_KeepsCapacityAvailable)
+    {
+        infra::BoundedVector<TestCategoryServer>::WithMaxSize<canMaxCategories> categories;
+
+        for (uint8_t id = 1; id != canMaxCategories; ++id)
+            categories.emplace_back(id, false);
+
+        for (int cycle = 0; cycle != 3; ++cycle)
+        {
+            for (auto& category : categories)
+                server.RegisterCategory(category);
+
+            for (auto& category : categories)
+                server.UnregisterCategory(category);
+        }
+
+        server.RegisterCategory(categories.front());
+        EXPECT_TRUE(categories.front().SendResponse(0x43));
+        server.UnregisterCategory(categories.front());
+    }
+
+    TEST_F(CanProtocolServerTest, CategoryOutlivingServer_SendsNothing)
+    {
+        StrictMock<hal::CanMock> ownCan;
+        EXPECT_CALL(ownCan, ReceiveData(_));
+
+        TestCategoryServer outlivingCategory(0x02, false);
+
+        {
+            std::optional<CanProtocolServer> ownServer;
+            ownServer.emplace(ownCan, config);
+            ownServer->RegisterCategory(outlivingCategory);
+        }
+
+        EXPECT_FALSE(outlivingCategory.SendResponse(0x43));
+        outlivingCategory.SendCommandAck(0x43, CanAckStatus::success);
     }
 
     TEST_F(CanProtocolServerTest, ConstructorAutoRegistersReceiveCallback)
