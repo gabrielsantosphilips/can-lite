@@ -369,7 +369,7 @@ flowchart TD
     J --> K{Handler result?}
     K -- Unknown message type --> L[Send unknownCommand Ack]
     K -- Rejected --> M[Send invalidPayload Ack]
-    K -- Handled --> N[Notify observer, no Ack]
+    K -- Handled --> N[Notify observer; server sends no Ack, the category may]
 ```
 
 ## 13. Node Addressing
